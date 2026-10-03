@@ -1,56 +1,17 @@
- #Kafka producer setting
-    spring.kafka.producer.acks=all
-    spring.kafka.producer.retries=3
-    spring.kafka.producer.batchSize=1000
-    spring.kafka.producer.lingerMs=1
-    spring.kafka.producer.bufferMemory=33554432
-    spring.kafka.producer.keyDeserializer=org.apache.kafka.common.serialization.StringSerializer
-    spring.kafka.producer.valueDeserializer=org.apache.kafka.common.serialization.StringSerializer
-    #Topics
-    spring.kafka.topic.payment.notification.sms=payment_sms_notification_topic
-    spring.kafka.topic.payment.notification.email=payment_email_notification_topic
-    spring.kafka.topic.partitions=4
-    spring.kafka.topic.replicationFactor=1
-    #SMS and Email config
-    external.api.sms.gateway.base.path=https://smsapipprod.sbi.co.in:9443
-    external.api.sms.gateway.url=/bmg/sms/epaypgotpdom
-    external.api.sms.gateway.user=epaypgotpdom
-    external.api.sms.gateway.password=Ep@y1Dpt
-    external.api.sms.body.content.type=text
-    external.api.sms.body.sender.id=SBIBNK
-    external.api.sms.body.int.flag=0
-    external.api.sms.body.charging=0
-    spring.mail.host=10.177.210.181
-    spring.mail.port=587
-    spring.mail.username=sbitestclient
-    spring.mail.password=sbitestclient_7f827c4b3aa6cd1f08d6b9cce2c0c80e
-    email.recipient=ebms_uat_receiver@ebmsgits.sbi.co.in
-    email.from=ebms_uat_sender@ebmsgits.sbi.co.in
-    management.endpoints.web.expo-sure.include=*
-    management.endpoint.health.show-details=always
-    management.endpoints.web.exposure.include=health,info
-    management.endpoint.health.probes.enabled=true
-    management.health.livenessState.enabled=true
-    management.health.readinessState.enabled=true
+#External Base Path
 
-    external.api.kms.services.base.path=https://preprod.epay.sbi/api/kms/v1
-    spring.kafka.topic.payment.push.verification=payment_push_verification_topic
-    logging.level.org.apache.kafka= ERROR
-     
-     ############################ Wallet Mobikwik start Pre-Prod #############################
-    epay.payment.wallet.cancelurl=https://preprod.epay.sbi/api/payments/v1/wallet/sbi/mobikwikcallback
-    epay.payment.wallet_sbiredirectdvurl=https://preprod.epay.sbi/api/payments/v1/wallet/sbi/mobikwikcallback
-    #epay.payment.wallet.bankbrowserurl=https://stagingmerchants2.mobikwik.com/encwallet
-    #epay.payment.wallet.bankdvurl=https://stagingmerchants2.mobikwik.com/enccheckstatus
-    epay.payment.wallet.bankbrowserurl=https://test.mobikwik.com/encwallet
-    epay.payment.wallet.bankdvurl=https://test.mobikwik.com/enccheckstatus
-    epay.payment.wallet.mid=MBK1034202
-    epay.payment.wallet.cell=7039262141
-    epay.payment.wallet.email=punam.rajput.cedge@sbi.co.in
-    epay.payment.wallet.merchantname=SBIEPAY2
-    epay.payment.wallet.secretkey=ju6tygh7u7tdg554k098ujd5468o
-    epay.payment.wallet.encryptionkey = 1234567890123456
-    epay.payment.wallet.Statuscode=0
-    epay.payment.wallet.statusmessage=The payment has been successfully collected
-    epay.payment.wallet.refid=838731552
+    external.api.admin.services.base.path=http://admin-adminservice.pre-prod-admin.svc.cluster.local:9094/api/admin/v1
+    external.api.transaction.services.base.path=http://txn-transactionservice.pre-prod-transaction.svc.cluster.local:9092/api/transaction/v1
+    epay.payment.card.finalResponse_Url=/callback
+    kms.service.base-url=
+    kms.service.cors-origin=
+    key.aek=BiIZ5feKr16Td3XSpVywqXlwRNfSy9Gtis04WqEbD/0=
+    kms.service.base-url=http://kms-kmsservice.pre-prod-kms.svc.cluster.local:9093/api/kms/v1
+    kms.service.cors-origin=https://preprod.epay.sbi
+    epay.payment.sbiinb.gtwmapid=4
+    epay.payment.otherinb.proxyip=
+    epay.payment.otherinb.proxyport=
+    epay.payment.otherinb.tlsversion=
+    epay.payment.otherinb.tlsversion=
+{{- end }}
 
