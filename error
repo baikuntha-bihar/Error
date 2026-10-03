@@ -97,3 +97,21 @@ data:
     epay.payment.card.acquiringBankId_intl = 93734895
     epay.payment.card.acquireInstanceId_intl = 93954c92-58ed-4912-8648-0948d5becc69
     epay.payment.card.acquirerMerchantId_intl = PAYUGCMID1
+   epay.payment.card.callback_url = https://preprod.epay.sbi/api/payments/v1/cards/sbi/visamaster/callback
+    epay.payment.card.callbackg_url_rupay = https://preprod.epay.sbi/api/payments/v1/cards/sbi/rupay/callback
+    epay.payment.card.pvReqURL = https://secure-3dssapi-az.wibmo.com/3dsserverapi/v5/pVrq/8642/
+    epay.payment.card.saleAuthURL = https://areionsbi.wibmo.com/saleservice/api/v1/sale
+    epay.payment.card.doubleVerification = https://areionsbi.wibmo.com/merchantOrderPayment/api/v1/txn-status
+    epay.payment.card.REFUNDURL = https://areionsbi.wibmo.com/voidrefundservice/api/v1/voidorrefund
+    epay.payment.card.REFUNDENQUIRY = https://areionsbi.wibmo.com/merchantOrderPayment/api/v2/txn-status 
+    epay.payment.card.checkbin_Url = https://areionsbi.wibmo.com/authentication/api/v1/checkbin
+    epay.payment.card.initiate_url = https://areionsbi.wibmo.com/authentication/api/v1/initiate
+    epay.payment.card.generateOtp_url = https://areionsbi.wibmo.com/authentication/api/v1/generateOtp 
+    epay.payment.card.resendOtp_url = https://areionsbi.wibmo.com/authentication/api/v1/resendOtp
+    epay.payment.card.verifyOtp_url = https://areionsbi.wibmo.com/authentication/api/v1/verifyOtp
+    epay.payment.card.authorize_url = https://areionsbi.wibmo.com/saleservice/api/v1/authorize
+    epay.payment.card.reverse_url = https://areionsbi.wibmo.com/authentication/web/v1/parseRupayResponse
+    epay.payment.card.token_url = https://tokenvault-sbi.wibmo.com/tokenVault/v3/tokenize
+    #old key
+ 
+
