@@ -1,17 +1,64 @@
-#External Base Path
 
-    external.api.admin.services.base.path=http://admin-adminservice.pre-prod-admin.svc.cluster.local:9094/api/admin/v1
-    external.api.transaction.services.base.path=http://txn-transactionservice.pre-prod-transaction.svc.cluster.local:9092/api/transaction/v1
-    epay.payment.card.finalResponse_Url=/callback
-    kms.service.base-url=
-    kms.service.cors-origin=
-    key.aek=BiIZ5feKr16Td3XSpVywqXlwRNfSy9Gtis04WqEbD/0=
-    kms.service.base-url=http://kms-kmsservice.pre-prod-kms.svc.cluster.local:9093/api/kms/v1
-    kms.service.cors-origin=https://preprod.epay.sbi
-    epay.payment.sbiinb.gtwmapid=4
-    epay.payment.otherinb.proxyip=
-    epay.payment.otherinb.proxyport=
-    epay.payment.otherinb.tlsversion=
-    epay.payment.otherinb.tlsversion=
-{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-{{ .Values.configMap.nameSuffix }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{ include "Epay_Payment_Service.labels" . | nindent 4 }}
+{{ if $.Values.configMap.additionalLabels }}
+    {{ toYaml $.Values.configMap.additionalLabels | nindent 4 }}
+{{ end }}
+{{ if $.Values.configMap.annotations }}
+  annotations:
+    {{ toYaml $.Values.configMap.annotations | nindent 4 }}
+{{ end }}
+data:
+  application.properties: |
+    spring.application.name=epay_payment_service
+    server.port=9093   
+    server.servlet.context-path=/api/payments/v1/
 
+    # Db connectivity
+    spring.jpa.show-sql=true
+    spring.jpa.properties.hibernate.show_sql=true
+    spring.jpa.properties.hibernate.format_sql=true
+    spring.web.resources.static-locations=classpath:/,file:/non-existent-folder
+    #logging.level.org.springframework.web=debug
+
+    #spring.datasource.url=jdbc:oracle:thin:@10.177.135.4:1590:epaysit2
+    #spring.datasource.url=jdbc:oracle:thin:@10.177.135.1:1590:newuat1
+    spring.datasource.url=jdbc:oracle:thin:@(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=epaydbscanuat.sbiepay.sbi)(PORT=1524))(CONNECT_DATA= (SERVER=DEDICATED) (SERVICE_NAME=newuat)))
+    # spring.datasource.username=PAYAGGTRANSCTION
+    # spring.datasource.password=SIA#2025
+    spring.datasource.username=${DB_USERNAME}
+    spring.datasource.password=${DB_PASSWORD}
+    spring.jpa.show-sql=true
+
+    spring.datasource.driver-class-name=oracle.jdbc.OracleDriver
+    
+    #Application Proxy Details
+    https_protocols = TLSv1.2
+    https_proxySet = true
+    https_proxyHost = serverswg.sbi.co.in
+    https_proxyPort = 9090
+
+    # Optional settings
+    spring.datasource.hikari.maximum-pool-size=10
+    spring.datasource.hikari.minimum-idle=5
+    spring.datasource.hikari.idle-timeout=30000
+    spring.datasource.hikari.max-lifetime=2000000
+
+    #In Minutes
+    transaction.token.expiry.time=30
+
+    # Liquibase Properties
+    spring.liquibase.change-log=classpath:db/changelog/db.changelog-master.xml
+    spring.liquibase.enabled=false
+    spring.liquibase.drop-first=false
+    logging.level.liquibase=DEBUG
+
+    spring.jpa.hibernate.ddl-auto=none
+
+    #jwt.secret.key=K98JUXrheTIDbUJcK312nith7i74bFJSjMF2v0tcuv4VKKu9DCCZrXBXVR5OAsXojKOsmWEAtVl4r7xa935i3g==
+    #security.whitelist.url=/webjars/, /actuator/, /swagger-resources/, /v3/api-docs, /swagger-ui/, /swagger-ui.html, /v1/token/access
