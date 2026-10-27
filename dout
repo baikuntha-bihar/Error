@@ -649,4 +649,405 @@ public String DhanalaxmiDVResponseConn(String bankdvurl, String encryptedData){
     }
 
 
+-------------_----------
+
+package com.epay.otherinb.controller;
+
+import com.epay.otherinb.model.response.PaymentFinalResponse;
+import com.epay.otherinb.service.DhanalaxmiPaymentService;
+import com.epay.otherinb.util.constants.OtherInbConstants;
+import com.sbi.epay.logging.utility.LoggerFactoryUtility;
+import com.sbi.epay.logging.utility.LoggerUtility;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import lombok.RequiredArgsConstructor;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequiredArgsConstructor
+@Validated
+@Tag(name = OtherInbConstants.OTHER_INB_INITIATION_TAG_VALUE)
+@RequestMapping("/other-inb")
+public class OtherINBPaymentCallBackController {
+
+    private final DhanalaxmiPaymentService dhanalaxmiPaymentService;
+    LoggerUtility logger = LoggerFactoryUtility.getLogger(this.getClass());
+
+    @PostMapping(value = "/callback/dhanalaxmi/retail")
+    @Operation(summary = "Dhanlaxmi Other INB Web Response and Double Verification API", description = "This API is used for Capture Web Response and Double Verification call to Bank.")
+    public PaymentFinalResponse dhanalaxmiOINbWebResponse(@RequestParam("encDhanBankData") String webResponse) throws Exception {
+        logger.info("Dhanlaxmi Retail Payment callback controller START. EncData: {}", webResponse);
+        return dhanalaxmiPaymentService.processDhanalaxmiCallBack(webResponse, "RETAIL");
+    }
+
+    @PostMapping(value = "/callback/dhanalaxmi/corporate")
+    @Operation(summary = "Dhanlaxmi Corporate Web Response and Double Verification API")
+    public PaymentFinalResponse dhanalaxmiCorporateWebResponse(@RequestParam("encDhanBankData") String webResponse) throws Exception {
+        logger.info("Dhanlaxmi CORPORATE Payment callback controller START. EncData: {}", webResponse);
+        return dhanalaxmiPaymentService.processDhanalaxmiCallBack(webResponse, "CORPORATE");
+    }
+}
+===========
+
+package com.epay.otherinb.service;
+
+import com.epay.otherinb.config.OtherInbConfigDetails;
+import com.epay.otherinb.dao.OrderDao;
+import com.epay.otherinb.dao.TransactionDao;
+import com.epay.otherinb.dto.DhanalaxmiResponseDto;
+import com.epay.otherinb.dto.TransactionDto;
+import com.epay.otherinb.entity.Order;
+import com.epay.otherinb.exceptions.OtherInbPaymentException;
+import com.epay.otherinb.externalservice.DhanalaxmiPaymentWebClientService;
+import com.epay.otherinb.model.response.DhanalaxmiDvResponse;
+import com.epay.otherinb.model.response.FinalResponseStatus;
+import com.epay.otherinb.model.response.PaymentFinalResponse;
+import com.epay.otherinb.util.constants.ErrorConstants;
+import com.epay.otherinb.util.constants.OtherInbConstants;
+import com.epay.otherinb.util.encryptdecryptutil.DhanaLaxmiRetailCorpEncryptionDecryptionUtil;
+import com.epay.otherinb.util.enums.PaymentStatus;
+import com.epay.otherinb.validator.OtherInbPaymentValidator;
+import com.sbi.epay.logging.utility.LoggerFactoryUtility;
+import com.sbi.epay.logging.utility.LoggerUtility;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+
+import java.math.BigDecimal;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
+import java.util.Map;
+
+@Service
+@RequiredArgsConstructor
+public class DhanalaxmiPaymentService {
+    LoggerUtility logger = LoggerFactoryUtility.getLogger(this.getClass());
+    
+    private final OtherInbPaymentValidator otherInbpaymentValidator;
+    private final DhanalaxmiPaymentWebClientService dhanalaxmiPaymentWebClientService;
+    private final DhanaLaxmiRetailCorpEncryptionDecryptionUtil dhanaLaxmiRetailCorpEncryptionDecryptionUtil;
+    private final TransactionDao transactionDao;
+    private final OrderDao orderDao;
+    private final OtherInbConfigDetails otherInbConfigDetails;
+    private final PaymentCallbackForwardService paymentCallbackForwardService;
+
+    private static final String ENC_KEY = "0620c6bca96baa252190504dfd568b8c0a2d146f8ebdb2577bba6f9500f0af84";
+    private static final String ENC_IV = "add84f1e3b6a74e8609fcdbc";
+
+    public PaymentFinalResponse processDhanalaxmiCallBack(String webResponse, String channelType) throws Exception {
+        logger.info("Processing {} callback for Dhanlaxmi. Raw Response: {}", channelType, webResponse);
+
+        // 1. Clean and Decrypt
+        String cleanEncData = webResponse.replaceAll(OtherInbConstants.NEW_LINE_REGEX, OtherInbConstants.PATTERN_EMPTY).replace(OtherInbConstants.PATTERN_SPACE, OtherInbConstants.PATTERN_EMPTY);
+        String decryptedWebResponse = DhanaLaxmiRetailCorpEncryptionDecryptionUtil.decryptDhanalaxmiRetail(cleanEncData, ENC_KEY, ENC_IV);
+        logger.info("Decrypted Web Response for {}: {}", channelType, decryptedWebResponse);
+
+        // 2. Map and Validate
+        Map<String, String> decryptedMap = dhanaLaxmiRetailCorpEncryptionDecryptionUtil.getDecryptedData(decryptedWebResponse);
+        otherInbpaymentValidator.validateDhanalaxmiWebResponse(decryptedMap);
+
+        DhanalaxmiResponseDto responseDto = DhanalaxmiResponseDto.builder()
+                .atrn(decryptedMap.get("PRN"))
+                .bId(decryptedMap.get("BID"))
+                .paId(decryptedMap.get("PAID"))
+                .amount(new BigDecimal(decryptedMap.get("AMT")))
+                .build();
+
+        otherInbpaymentValidator.validateDhanalaxmicallBack(responseDto);
+
+        // 3. Check Bank Status
+        if (!"Y".equalsIgnoreCase(responseDto.getPaId())) {
+            logger.warn("Transaction FAILED at bank end for ATRN: {}", responseDto.getAtrn());
+            return getRedirectObject(responseDto);
+        }
+
+        // 4. Trigger Double Verification
+        logger.info("Web Response status is Y. Initiating Double Verification for ATRN: {}", responseDto.getAtrn());
+        return dhanalaxmiDvinitiationProcess(responseDto, channelType);
+    }
+
+    public PaymentFinalResponse dhanalaxmiDvinitiationProcess(DhanalaxmiResponseDto responseDto, String channelType) throws Exception {
+        logger.info("Fetching DB details for DV process for ATRN: {}", responseDto.getAtrn());
+        TransactionDto transactionDto = transactionDao.getValidPaymentAckReq(responseDto.getAtrn(), PaymentStatus.BOOKED.toString(), OtherInbConstants.DHANALAXMI_CONST);
+
+        // Build and Encrypt DV Request
+        String dvRequestString = dhanaLaxmiRetailCorpEncryptionDecryptionUtil.processDhanalaxmiDoubleVerRequest1(responseDto);
+        logger.info("Plain DV Request String to Bank: {}", dvRequestString);
+        
+        String encryptedDvData = DhanaLaxmiRetailCorpEncryptionDecryptionUtil.encryptDhanalaxmiRetail(dvRequestString, ENC_KEY, ENC_IV);
+        
+        // Call WebClient
+        logger.info("Calling DV API for ATRN: {}", responseDto.getAtrn());
+        DhanalaxmiDvResponse dvResponseJson = dhanalaxmiPaymentWebClientService.processingDoubleVerRequest(encryptedDvData);
+
+        if (dvResponseJson == null || !"000".equals(dvResponseJson.getStatusCode())) {
+            logger.error("DV API Failed or returned null for ATRN: {}. Status: {}", responseDto.getAtrn(), dvResponseJson != null ? dvResponseJson.getStatusDescription() : "NULL");
+            return getRedirectObject(responseDto);
+        }
+
+        // Decrypt DV Response
+        String decryptedDvString = URLDecoder.decode(DhanaLaxmiRetailCorpEncryptionDecryptionUtil.decryptDhanalaxmiRetail(dvResponseJson.getVerificationResponse(), ENC_KEY, ENC_IV), StandardCharsets.UTF_8);
+        logger.info("Decrypted DV Response for ATRN {}: {}", responseDto.getAtrn(), decryptedDvString);
+
+        Map<String, String> dvMap = dhanaLaxmiRetailCorpEncryptionDecryptionUtil.getDecryptedData(decryptedDvString);
+
+        // Verify Checksum (Using Fixed SHA-256)
+        String expectedChecksumString = dhanaLaxmiRetailCorpEncryptionDecryptionUtil.buildDvResponseChecksumString(
+                dvMap.get("PRN"), dvMap.get("BID"), dvMap.get("PAID"), dvMap.get("AMT"), 
+                dvMap.get("ACCOUNTNO"), dvMap.get("PAYDATE"), dvMap.get("REMNAME"), dvMap.get("PAYREFNO"));
+        String calculatedChecksum = DhanaLaxmiRetailCorpEncryptionDecryptionUtil.checkSumDhanalaxmiRetail(expectedChecksumString);
+
+        if (!calculatedChecksum.equalsIgnoreCase(dvMap.get("CHECKSUM"))) {
+            logger.error("DV Checksum Mismatch! Expected: {}, Calculated: {}", dvMap.get("CHECKSUM"), calculatedChecksum);
+            throw new OtherInbPaymentException(ErrorConstants.DHANALAXMI_DV_CHECKSUM_MISMATCH_ERROR_CODE, ErrorConstants.DHANALAXMI_DV_CHECKSUM_MISMATCH_ERROR_MESSAGE);
+        }
+
+        // Amount Validation
+        if (!otherInbpaymentValidator.validateWebAndDvAmt(responseDto.getAmount(), new BigDecimal(dvMap.get("AMT")))) {
+            logger.error("DV Amount Mismatch for ATRN: {}. Web Amt: {}, DV Amt: {}", responseDto.getAtrn(), responseDto.getAmount(), dvMap.get("AMT"));
+            return getRedirectObject(responseDto);
+        }
+
+        // Bank Ref Validation
+        if (!otherInbpaymentValidator.ValidateBankReferenceNumber(responseDto.getBId(), dvMap.get("BID"))) {
+            logger.error("DV Bank Ref Number Mismatch for ATRN: {}. Web BID: {}, DV BID: {}", responseDto.getAtrn(), responseDto.getBId(), dvMap.get("BID"));
+            return getRedirectObject(responseDto);
+        }
+
+        // Corporate Specific Validation: Account Number
+        if ("CORPORATE".equalsIgnoreCase(channelType) && transactionDto.getCorporateAccountNo() != null) {
+            if (!transactionDto.getCorporateAccountNo().equals(dvMap.get("ACCOUNTNO"))) {
+                logger.error("DV ACCOUNTNO Mismatch for Corporate ATRN: {}. Expected: {}, Got: {}", responseDto.getAtrn(), transactionDto.getCorporateAccountNo(), dvMap.get("ACCOUNTNO"));
+                throw new OtherInbPaymentException(ErrorConstants.INVALID_ERROR_CODE, "Debited account does not match corporate account");
+            }
+            logger.info("Corporate Account Number matched successfully for ATRN: {}", responseDto.getAtrn());
+        }
+
+        logger.info("Dhanlaxmi DV Validation Successful for ATRN: {} (Channel: {})", responseDto.getAtrn(), channelType);
+        return getRedirectObject(responseDto);
+    }
+
+    public PaymentFinalResponse getRedirectObject(DhanalaxmiResponseDto responseDto) {
+        logger.info("Building final redirect object for ATRN: {}", responseDto.getAtrn());
+        TransactionDto transactionDto = transactionDao.getTransactionDetails(responseDto.getAtrn());
+        Order order = orderDao.getOrderDetails(transactionDto);
+
+        String status = responseDto.getPaId().equalsIgnoreCase("Y") ? OtherInbConstants.SUCCESS : OtherInbConstants.FAILED;
+        FinalResponseStatus finalResponseStatus = getStatus(transactionDto, order, status, responseDto.getPaId());
+
+        return PaymentFinalResponse.builder()
+                .mId(transactionDto.getMerchantId() == null ? OtherInbConstants.EMPTY : transactionDto.getMerchantId())
+                .merchantOrderNumber(transactionDto.getOrderRefNumber() == null ? OtherInbConstants.EMPTY : transactionDto.getOrderRefNumber())
+                .sbiOrderId(transactionDto.getSbiOrderRefNumber() == null ? OtherInbConstants.EMPTY : transactionDto.getSbiOrderRefNumber())
+                .orderAmount(String.valueOf(transactionDto.getOrderAmount() == null ? OtherInbConstants.EMPTY : String.valueOf(transactionDto.getOrderAmount())))
+                .totalAmount(String.valueOf(transactionDto.getDebitAmt()) == null ? OtherInbConstants.EMPTY : String.valueOf(transactionDto.getDebitAmt()))
+                .atrn(transactionDto.getAtrnNum() == null ? OtherInbConstants.EMPTY : transactionDto.getAtrnNum())
+                .transactionStatus(finalResponseStatus.getStatus())
+                .reason(finalResponseStatus.getResponseReason())
+                .CIN(transactionDto.getCin() == null ? OtherInbConstants.EMPTY : transactionDto.getCin())
+                .otherDetails(order.getOtherDetails() == null ? OtherInbConstants.EMPTY : order.getOtherDetails())
+                .bankName(transactionDto.getChannelBank() == null ? OtherInbConstants.EMPTY : transactionDto.getChannelBank())
+                .bankTxnNumber(responseDto.getTId() == null ? OtherInbConstants.EMPTY : responseDto.getTId())
+                .bankCode(transactionDto.getPayMode() == null ? OtherInbConstants.EMPTY : transactionDto.getPayMode())
+                .customerId(order.getCustomerId() == null ? OtherInbConstants.EMPTY : order.getCustomerId())
+                .orderRetryCount(String.valueOf(order.getOrderRetryCount()) == null ? OtherInbConstants.EMPTY : String.valueOf(order.getOrderRetryCount()))
+                .build();
+    }
+
+    public FinalResponseStatus getStatus(TransactionDto transactionDto, Order order, String channelStatus, String failureReason) {
+        if (!transactionDto.getOrderAmount().equals(order.getOrderAmount())) {
+            return FinalResponseStatus.builder().status(OtherInbConstants.FAILED).responseReason(OtherInbConstants.FAILED_FOR_AMOUNT_NOT_MATCHED).build();
+        } else {
+            return FinalResponseStatus.builder().status(channelStatus).responseReason(failureReason.replaceAll(OtherInbConstants.SPECIAL_CHAR_REGEX, OtherInbConstants.EMPTY)).build();
+        }
+    }
+}
+
+
+======
+
+
+package com.epay.otherinb.util.encryptdecryptutil;
+
+import org.springframework.stereotype.Component;
+import lombok.RequiredArgsConstructor;
+// ... [Your imports] ...
+
+@Component("DhanaLaxmiRetailCorpEncryptionDecryptionUtil")
+@RequiredArgsConstructor
+public class DhanaLaxmiRetailCorpEncryptionDecryptionUtil {
+    
+    // ... [Keep your AES/GCM encrypt/decrypt methods exactly as they are] ...
+
+    /**
+     * CRITICAL FIX: Bank uses SHA-256, not SHA-512.
+     */
+    public static String checkSumDhanalaxmiRetail(String hashSrc) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256"); // FIXED HERE
+            md.update(hashSrc.getBytes(StandardCharsets.UTF_8));
+            byte[] byteData = md.digest();
+            StringBuilder sb = new StringBuilder();
+            for (byte byteDatum : byteData) {
+                sb.append(String.format("%02x", byteDatum)); 
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            throw new RuntimeException("SHA-256 Error", e);
+        }
+    }
+
+    public String formatedAmount(BigDecimal amount) {
+        if (amount == null) return "0.00";
+        return new DecimalFormat("0.00").format(amount.setScale(2, RoundingMode.HALF_UP));
+    }
+
+    public Map<String, String> getDecryptedData(String decResponse) {
+        return Arrays.stream(decResponse.split("&"))
+                .map(kv -> kv.split("=", 2))
+                .filter(kvArray -> kvArray.length == 2)
+                .collect(Collectors.toMap(kv -> kv[0].trim().toUpperCase(), kv -> kv[1].trim()));
+    }
+
+    public String processDhanalaxmiDoubleVerRequest1(DhanalaxmiResponseDto responseDto) {
+        String amt = formatedAmount(responseDto.getAmount());
+        String prn = responseDto.getAtrn();
+
+        String checksumInput = String.format("PRN=%s&AMT=%s", prn, amt);
+        String checksum = checkSumDhanalaxmiRetail(checksumInput); // Uses SHA-256
+
+        return String.format("PRN=%s&AMT=%s&CHECKSUM=%s", prn, amt, checksum);
+    }
+
+    public String buildDvResponseChecksumString(String prn, String bid, String paid, String amt, String accNo, String payDate, String remName, String payRefNo) {
+        return String.format("PRN=%s&BID=%s&PAID=%s&AMT=%s&ACCOUNTNO=%s&PAYDATE=%s&REMNAME=%s&PAYREFNO=%s", 
+                prn, bid, paid, amt, accNo, payDate, remName, payRefNo);
+    }
+
+    public String createPlainWebRequest(TransactionDto transactionDto, String returnUrl, String channelType) {
+        String merchantName = "CORPORATE".equalsIgnoreCase(channelType) ? "CorpMerchant" : "RetailMerchant";
+        
+        String baseRequest = String.format("PID=PGREFID&PRN=%s&AMT=%s&CRN=INR&RU=%s&MN=%s", 
+                transactionDto.getAtrnNum(), 
+                formatedAmount(transactionDto.getDebitAmt()), 
+                returnUrl, 
+                merchantName);
+
+        if ("CORPORATE".equalsIgnoreCase(channelType) && transactionDto.getCorporateAccountNo() != null) {
+            baseRequest += "&ACTNO=" + transactionDto.getCorporateAccountNo().trim();
+        }
+        return baseRequest;
+    }
+}
+
+=====
+
+package com.epay.otherinb.externalservice;
+
+import com.epay.otherinb.exceptions.OtherInbPaymentException;
+import com.epay.otherinb.model.request.DhanalaxmiDvRequest;
+import com.epay.otherinb.model.response.DhanalaxmiDvResponse;
+import com.epay.otherinb.util.constants.ErrorConstants;
+import com.sbi.epay.logging.utility.LoggerFactoryUtility;
+import com.sbi.epay.logging.utility.LoggerUtility;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
+import org.springframework.stereotype.Component;
+import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Mono;
+
+@Component
+@RequiredArgsConstructor
+public class DhanalaxmiPaymentWebClientService {
+    
+    LoggerUtility logger = LoggerFactoryUtility.getLogger(this.getClass());
+    private static final String DV_API_URL = "https://ngib.dhanbank.in:8443/rib-rest/payment/paymentDoubleVerification";
+
+    public DhanalaxmiDvResponse processingDoubleVerRequest(String encryptedDvData) {
+        logger.info("Initiating Dhanlaxmi Double Verification API S2S call.");
+
+        DhanalaxmiDvRequest requestJson = DhanalaxmiDvRequest.builder()
+                .merchantID("PGREFID")
+                .encDhanaBankData(encryptedDvData)
+                .build();
+
+        try {
+            WebClient webClient = WebClient.builder().build();
+            
+            DhanalaxmiDvResponse response = webClient.post()
+                    .uri(DV_API_URL)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(requestJson)
+                    .retrieve()
+                    .onStatus(status -> status.is4xxClientError() || status.is5xxServerError(),
+                            clientResponse -> clientResponse.bodyToMono(String.class)
+                                    .flatMap(error -> {
+                                        logger.error("DV API Error Response from Bank: {}", error);
+                                        return Mono.error(new OtherInbPaymentException(
+                                                ErrorConstants.EXTERNAL_SERVICE_ERROR_CODE, "DV API Error: " + error));
+                                    }))
+                    .bodyToMono(DhanalaxmiDvResponse.class)
+                    .block();
+
+            logger.info("DV API Response received successfully. Status Code: {}", response != null ? response.getStatusCode() : "null");
+            return response;
+
+        } catch (Exception e) {
+            logger.error("Exception during DV WebClient Call: {}", e.getMessage(), e);
+            throw new OtherInbPaymentException(ErrorConstants.DOUBLE_VERIFICATION_ERROR_CODE,
+                    ErrorConstants.DOUBLE_VERIFICATION_ERROR_MESSAGE);
+        }
+    }
+}
+
+
+====
+
+
+package com.epay.otherinb.validator;
+
+import com.epay.otherinb.dto.DhanalaxmiResponseDto;
+import com.epay.otherinb.exceptions.OtherInbPaymentException;
+import com.epay.otherinb.util.constants.ErrorConstants;
+import org.apache.commons.lang3.StringUtils;
+import org.springframework.stereotype.Component;
+import java.math.BigDecimal;
+import java.util.Map;
+
+@Component
+public class OtherInbPaymentValidator {
+
+    public void validateDhanalaxmicallBack(DhanalaxmiResponseDto response) {
+        if (response.getAtrn() == null || response.getAtrn().isEmpty()) {
+            throw new OtherInbPaymentException(ErrorConstants.INVALID_ERROR_CODE, "ATRN is missing in Web Response");
+        }
+        if (response.getAmount() == null || response.getAmount().signum() <= 0) {
+            throw new OtherInbPaymentException(ErrorConstants.INVALID_ERROR_CODE, "Invalid Amount in Web Response");
+        }
+    }
+
+    public void validateDhanalaxmiWebResponse(Map<String, String> map) {
+        if (!map.containsKey("PRN") || !map.containsKey("BID") || !map.containsKey("PAID") || !map.containsKey("AMT")) {
+            throw new OtherInbPaymentException(ErrorConstants.DHANALAXMI_WEB_RESPONSE_ERROR_CODE,
+                    "Missing mandatory fields (PRN, BID, PAID, AMT) in decrypted web response");
+        }
+    }
+
+    public boolean validateWebAndDvAmt(BigDecimal webAmt, BigDecimal dvAmt) {
+        if (webAmt == null || dvAmt == null) return false;
+        return webAmt.setScale(2, java.math.RoundingMode.HALF_UP)
+                .compareTo(dvAmt.setScale(2, java.math.RoundingMode.HALF_UP)) == 0;
+    }
+
+    public boolean ValidateBankReferenceNumber(String webSbiRefNo, String dvSbiRefNo) {
+        return StringUtils.isNotBlank(webSbiRefNo) &&
+                !webSbiRefNo.equals("0") &&
+                webSbiRefNo.equals(dvSbiRefNo);
+    }
+}
+
+
 
