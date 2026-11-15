@@ -1,1 +1,61 @@
+ Important Spring Annotations
 
+Annotation
+
+Purpose
+
+@SpringBootApplication
+
+Main application configuration
+
+@RestController
+
+REST API controller
+
+@Controller
+
+MVC controller
+
+@Service
+
+Business logic layer
+
+@Repository
+
+Database access layer
+
+@Component
+
+Generic Spring-managed bean
+
+@Autowired
+
+Dependency injection
+
+@Bean
+
+Creates a bean through configuration
+
+@Configuration
+
+Configuration class
+
+@Value
+
+Injects configuration values
+
+@Transactional
+
+Transaction management
+
+@Qualifier
+
+Selects a specific bean
+
+@Primary
+
+Gives a bean default preference
+
+5. Spring Boot Application Architecture
+
+Controller → Service → Repository → Database
