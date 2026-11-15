@@ -1,1 +1,29 @@
+ IoC and Dependency Injection
 
+IoC (Inversion of Control):
+
+The Spring container manages object creation and their lifecycle.
+
+Dependency Injection:
+
+Spring injects required dependencies into a class rather than the class creating them itself.
+
+Example:
+
+@Service
+public class PaymentService {
+
+    public void processPayment() {
+        System.out.println("Payment processed");
+    }
+}
+
+@RestController
+public class PaymentController {
+
+    private final PaymentService paymentService;
+
+    public PaymentController(
+            PaymentService paymentService) {
+        this.paymentService = paymentService;
+    }
