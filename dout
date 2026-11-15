@@ -1,1 +1,33 @@
+SPRING FRAMEWORK AND SPRING BOOT
 
+1. What is Spring Framework?
+
+Spring is a Java framework used to develop enterprise applications.
+
+Important features:
+
+Dependency Injection
+
+Inversion of Control
+
+Aspect-Oriented Programming
+
+Transaction Management
+
+Integration with Hibernate
+
+2. What is Spring Boot?
+
+Spring Boot simplifies Spring application development by providing:
+
+Auto Configuration
+
+Starter Dependencies
+
+Embedded Servers
+
+Production-ready Actuator
+
+Minimal XML configuration
+
+3. IoC and Dependency Injection
